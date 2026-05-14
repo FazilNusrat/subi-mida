@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id                   String    @id
+  shop                 String
+  state                String
+  isOnline             Boolean   @default(false)
+  scope                String?
+  expires              DateTime?
+  accessToken          String
+  userId               BigInt?
+  firstName            String?
+  lastName             String?
+  email                String?
+  accountOwner         Boolean   @default(false)
+  locale               String?
+  collaborator         Boolean?  @default(false)
+  emailVerified        Boolean?  @default(false)
+  refreshToken         String?
+  refreshTokenExpires  DateTime?
+}
+
+model SubscriptionPlan {
+  id                 String   @id @default(cuid())
+  shop               String
+  name               String
+  intervalType       String
+  intervalCount      Int      @default(1)
+  discountType       String   @default("NONE")
+  discountValue      Float    @default(0)
+  position           Int      @default(0)
+  isActive           Boolean  @default(true)
+  shopifyPlanGroupId String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([shop])
+  @@index([shop, position])
+}
+
+model WidgetSettings {
+  id               String   @id @default(cuid())
+  shop             String   @unique
+  widgetEnabled    Boolean  @default(true)
+  title            String   @default("Subscribe & Save")
+  subtitle         String   @default("")
+  showOneTime      Boolean  @default(true)
+  oneTimeLabel     String   @default("One-time purchase")
+  displayStyle     String   @default("cards")
+  accentColor      String   @default("#008060")
+  borderRadius     Int      @default(8)
+  showBadge        Boolean  @default(true)
+  badgeText        String   @default("Save {discount}")
+  showAboveButton  Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}

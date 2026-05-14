@@ -1,0 +1,27 @@
+name = "subscription-pro"
+client_id = "ae0a91e02b955afaa838c581b96136b2"
+application_url = "https://nights-our-focusing-subscribers.trycloudflare.com"
+embedded = true
+
+[access_scopes]
+scopes = "write_products,read_products,write_purchase_options"
+
+[auth]
+redirect_urls = [
+  "https://nights-our-focusing-subscribers.trycloudflare.com/auth/callback",
+  "https://nights-our-focusing-subscribers.trycloudflare.com/auth/shopify/callback"
+]
+
+[app_proxy]
+url = "https://nights-our-focusing-subscribers.trycloudflare.com/api/proxy"
+subpath = "subscription-pro"
+prefix = "apps"
+
+[webhooks]
+api_version = "2025-10"
+
+[pos]
+embedded = false
+
+[build]
+automatically_update_urls_on_dev = true

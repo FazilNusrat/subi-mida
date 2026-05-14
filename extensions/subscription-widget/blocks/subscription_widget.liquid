@@ -1,0 +1,28 @@
+{%- comment -%}
+  Subscription Pro — product page block.
+  All settings are managed from the app admin sidebar.
+  This file should never need to be edited.
+{%- endcomment -%}
+
+<div
+  id="sp-root-{{ section.id }}"
+  class="sp-widget"
+  data-shop="{{ shop.permanent_domain }}"
+  data-product="{{ product.id }}"
+  data-variant="{{ product.selected_or_first_available_variant.id }}"
+  data-section="{{ section.id }}"
+></div>
+
+{{ 'subscription-widget.css' | asset_url | stylesheet_tag }}
+<script src="{{ 'subscription-widget.js' | asset_url }}" defer></script>
+
+{% schema %}
+{
+  "name": "Subscription Widget",
+  "target": "section",
+  "enabled_on": {
+    "templates": ["product"]
+  },
+  "settings": []
+}
+{% endschema %}

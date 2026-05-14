@@ -1,0 +1,144 @@
+.sp-widget {
+  --sp-accent: #008060;
+  --sp-radius: 8px;
+  margin: 16px 0;
+  font-family: inherit;
+}
+
+.sp-inner {
+  border: 1px solid #e1e3e5;
+  border-radius: var(--sp-radius);
+  overflow: hidden;
+}
+
+.sp-header {
+  padding: 12px 16px;
+  background: #f6f6f7;
+  border-bottom: 1px solid #e1e3e5;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sp-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #202223;
+}
+
+.sp-subtitle {
+  font-size: 12px;
+  color: #6d7175;
+}
+
+/* ── Cards style ── */
+.sp-style-cards .sp-options {
+  display: flex;
+  flex-direction: column;
+}
+
+.sp-style-cards .sp-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f1f1;
+  transition: background 0.15s;
+}
+
+.sp-style-cards .sp-option:last-child {
+  border-bottom: none;
+}
+
+.sp-style-cards .sp-option:hover {
+  background: #f9fafb;
+}
+
+.sp-style-cards .sp-option:has(input:checked) {
+  background: color-mix(in srgb, var(--sp-accent) 6%, white);
+}
+
+/* ── Pills style ── */
+.sp-style-pills .sp-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px;
+}
+
+.sp-style-pills .sp-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: 1.5px solid #e1e3e5;
+  border-radius: 100px;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: white;
+}
+
+.sp-style-pills .sp-option:has(input:checked) {
+  border-color: var(--sp-accent);
+  background: color-mix(in srgb, var(--sp-accent) 8%, white);
+}
+
+.sp-style-pills .sp-option-interval {
+  display: none;
+}
+
+/* ── List style ── */
+.sp-style-list .sp-options {
+  padding: 8px 0;
+}
+
+.sp-style-list .sp-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+
+/* ── Shared ── */
+.sp-option input[type="radio"] {
+  accent-color: var(--sp-accent);
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+
+.sp-option-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sp-option-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #202223;
+}
+
+.sp-option-interval {
+  font-size: 12px;
+  color: #6d7175;
+}
+
+.sp-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 100px;
+  background: color-mix(in srgb, var(--sp-accent) 12%, white);
+  color: var(--sp-accent);
+  white-space: nowrap;
+}
+
+.sp-loading {
+  padding: 16px;
+  font-size: 13px;
+  color: #6d7175;
+}
