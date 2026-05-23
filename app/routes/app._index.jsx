@@ -1,4 +1,4 @@
-import { useLoaderData } from "react-router";
+import { useLoaderData, useNavigate } from "react-router";
 import {
   Page,
   Layout,
@@ -29,6 +29,7 @@ export const loader = async ({ request }) => {
 
 export default function HomePage() {
   const { customizerUrl } = useLoaderData();
+  const navigate = useNavigate();
 
   return (
     <Page>
@@ -55,7 +56,7 @@ export default function HomePage() {
                     Enable in Theme Customizer
                   </Button>
                   <Button
-                    url="/app/subscriptions"
+                    onClick={() => navigate("/app/subscriptions")}
                     size="large"
                   >
                     Manage Plans

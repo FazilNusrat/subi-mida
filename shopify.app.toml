@@ -1,27 +1,30 @@
-name = "subscription-pro"
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
 client_id = "ae0a91e02b955afaa838c581b96136b2"
-application_url = "https://nights-our-focusing-subscribers.trycloudflare.com"
+name = "subscription-pro"
+application_url = "https://fin-broke-skills-earn.trycloudflare.com/"
 embedded = true
 
-[access_scopes]
-scopes = "write_products,read_products,write_purchase_options"
-
-[auth]
-redirect_urls = [
-  "https://nights-our-focusing-subscribers.trycloudflare.com/auth/callback",
-  "https://nights-our-focusing-subscribers.trycloudflare.com/auth/shopify/callback"
-]
-
-[app_proxy]
-url = "https://nights-our-focusing-subscribers.trycloudflare.com/api/proxy"
-subpath = "subscription-pro"
-prefix = "apps"
+[build]
+automatically_update_urls_on_dev = true
 
 [webhooks]
 api_version = "2025-10"
 
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_customer_payment_methods,read_own_subscription_contracts,read_products,write_own_subscription_contracts,write_products,write_purchase_options"
+
+[auth]
+redirect_urls = [
+  "https://fin-broke-skills-earn.trycloudflare.com/auth/callback",
+  "https://fin-broke-skills-earn.trycloudflare.com/auth/shopify/callback"
+]
+
+[app_proxy]
+url = "https://fin-broke-skills-earn.trycloudflare.com/api/proxy"
+subpath = "subscription-pro"
+prefix = "apps"
+
 [pos]
 embedded = false
-
-[build]
-automatically_update_urls_on_dev = true

@@ -142,15 +142,64 @@ export const action = async ({ request, params }) => {
   );
 
   const result = await resp.json();
+  console.log("GraphQL result:", JSON.stringify(result?.data?.sellingPlanGroupCreate, null, 2));
   const groupId =
-    result?.data?.sellingPlanGroupCreate?.sellingPlanGroup?.id;
+  result?.data?.sellingPlanGroupCreate?.sellingPlanGroup?.id;
+  const sellingPlanId =
+  result?.data?.sellingPlanGroupCreate?.sellingPlanGroup?.sellingPlans?.edges?.[0]?.node?.id;
 
   if (groupId) {
-    await prisma.subscriptionPlan.update({
-      where: { id: record.id },
-      data: { shopifyPlanGroupId: groupId },
-    });
+  // Query the selling plan ID from the group
+  const planResp = await admin.graphql(
+    `query getSellingPlan($id: ID!) {
+      sellingPlanGroup(id: $id) {
+        sellingPlans(first: 1) {
+          edges {
+            node {
+              id
+            }
+          }
+        }
+      }
+    }`,
+    { variables: { id: groupId } }
+  );
+  const planResult = await planResp.json();
+  const sellingPlanId = planResult?.data?.sellingPlanGroup?.sellingPlans?.edges?.[0]?.node?.id;
+
+  console.log("Selling Plan ID:", sellingPlanId);
+
+  await prisma.subscriptionPlan.update({
+    where: { id: record.id },
+    data: { 
+      shopifyPlanGroupId: groupId,
+      shopifySellingPlanId: sellingPlanId || null,
+    },
+  });
+
+  // Assign to all products
+  const productsResp = await admin.graphql(`
+    query {
+      products(first: 250) {
+        edges { node { id } }
+      }
+    }
+  `);
+  const productsResult = await productsResp.json();
+  const productIds = productsResult?.data?.products?.edges?.map(e => e.node.id) || [];
+
+  if (productIds.length > 0) {
+    await admin.graphql(
+      `mutation assignPlans($id: ID!, $productIds: [ID!]!) {
+        sellingPlanGroupAddProducts(id: $id, productIds: $productIds) {
+          sellingPlanGroup { id }
+          userErrors { field message }
+        }
+      }`,
+      { variables: { id: groupId, productIds } }
+    );
   }
+}
 
   return redirect("/app/subscriptions");
 };
@@ -197,7 +246,7 @@ export default function SubscriptionFormPage() {
       title={isNew ? "New Subscription Plan" : `Edit — ${plan.name}`}
       backAction={{
         content: "Subscriptions",
-        url: "/app/subscriptions",
+        onAction: () => navigate("/app/subscriptions"),
       }}
       primaryAction={{
         content: isSaving ? "Saving..." : "Save Plan",

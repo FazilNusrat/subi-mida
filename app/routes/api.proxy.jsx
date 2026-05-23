@@ -22,7 +22,7 @@ export const loader = async ({ request }) => {
         intervalCount: true,
         discountType: true,
         discountValue: true,
-        shopifyPlanGroupId: true,
+        shopifySellingPlanId: true,
       },
     }),
   ]);
@@ -41,7 +41,12 @@ export const loader = async ({ request }) => {
     showAboveButton: false,
   };
 
-  return new Response(JSON.stringify({ settings, plans }), {
+  const mappedPlans = plans.map(p => ({
+  ...p,
+  shopifyPlanGroupId: p.shopifySellingPlanId,
+}));
+
+return new Response(JSON.stringify({ settings, plans: mappedPlans }), {
     status: 200,
     headers: {
       "Content-Type": "application/json",
