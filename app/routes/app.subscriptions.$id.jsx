@@ -33,6 +33,160 @@ export const loader = async ({ request, params }) => {
   return { plan };
 };
 
+// Builds the Shopify selling plan definition shared by create + update.
+function buildSellingPlan(data) {
+  const pricingPolicies =
+    data.discountType === "NONE"
+      ? []
+      : [
+          {
+            fixed: {
+              adjustmentType:
+                data.discountType === "PERCENTAGE"
+                  ? "PERCENTAGE"
+                  : "FIXED_AMOUNT",
+              adjustmentValue:
+                data.discountType === "PERCENTAGE"
+                  ? { percentage: data.discountValue }
+                  : { fixedValue: data.discountValue },
+            },
+          },
+        ];
+
+  return {
+    name: data.name,
+    category: "SUBSCRIPTION",
+    options: [`${data.intervalCount} ${data.intervalType}`],
+    billingPolicy: {
+      recurring: {
+        interval: data.intervalType,
+        intervalCount: data.intervalCount,
+      },
+    },
+    deliveryPolicy: {
+      recurring: {
+        interval: data.intervalType,
+        intervalCount: data.intervalCount,
+      },
+    },
+    pricingPolicies,
+  };
+}
+
+// Fetches every product id (paginated) so the selling plan covers the whole catalog,
+// not just the first 250 products.
+async function getAllProductIds(admin) {
+  const ids = [];
+  let cursor = null;
+
+  while (true) {
+    const resp = await admin.graphql(
+      `query getProducts($cursor: String) {
+        products(first: 250, after: $cursor) {
+          edges { node { id } }
+          pageInfo { hasNextPage endCursor }
+        }
+      }`,
+      { variables: { cursor } }
+    );
+    const json = await resp.json();
+    const conn = json?.data?.products;
+    if (!conn) break;
+
+    for (const edge of conn.edges) ids.push(edge.node.id);
+
+    if (!conn.pageInfo?.hasNextPage) break;
+    cursor = conn.pageInfo.endCursor;
+  }
+
+  return ids;
+}
+
+// Creates a brand new selling plan group (and attaches all products), OR updates the
+// existing group in place when the record already points at a real SellingPlanGroup.
+// Returns { groupId, sellingPlanId } on success or { error } so the caller can surface it.
+async function syncSellingPlanGroup(admin, record, data) {
+  const sellingPlan = buildSellingPlan(data);
+
+  const hasValidGroup =
+    record.shopifyPlanGroupId?.includes("SellingPlanGroup") &&
+    record.shopifySellingPlanId?.includes("SellingPlan");
+
+  if (hasValidGroup) {
+    const resp = await admin.graphql(
+      `mutation updatePlan($id: ID!, $input: SellingPlanGroupInput!) {
+        sellingPlanGroupUpdate(id: $id, input: $input) {
+          sellingPlanGroup {
+            id
+            sellingPlans(first: 1) { edges { node { id } } }
+          }
+          userErrors { field message }
+        }
+      }`,
+      {
+        variables: {
+          id: record.shopifyPlanGroupId,
+          input: {
+            name: data.name,
+            merchantCode: record.id,
+            options: ["Delivery every"],
+            sellingPlansToUpdate: [{ id: record.shopifySellingPlanId, ...sellingPlan }],
+          },
+        },
+      }
+    );
+    const payload = (await resp.json())?.data?.sellingPlanGroupUpdate;
+    const userErrors = payload?.userErrors || [];
+    if (userErrors.length) {
+      return { error: userErrors.map((e) => e.message).join("; ") };
+    }
+    return {
+      groupId: payload?.sellingPlanGroup?.id || record.shopifyPlanGroupId,
+      sellingPlanId:
+        payload?.sellingPlanGroup?.sellingPlans?.edges?.[0]?.node?.id ||
+        record.shopifySellingPlanId,
+    };
+  }
+
+  // Create path — attach the whole catalog up front via the resources argument.
+  const productIds = await getAllProductIds(admin);
+  const resp = await admin.graphql(
+    `mutation createPlan($input: SellingPlanGroupInput!, $resources: SellingPlanGroupResourceInput) {
+      sellingPlanGroupCreate(input: $input, resources: $resources) {
+        sellingPlanGroup {
+          id
+          sellingPlans(first: 1) { edges { node { id } } }
+        }
+        userErrors { field message }
+      }
+    }`,
+    {
+      variables: {
+        input: {
+          name: data.name,
+          merchantCode: record.id,
+          options: ["Delivery every"],
+          sellingPlansToCreate: [sellingPlan],
+        },
+        resources: productIds.length ? { productIds } : null,
+      },
+    }
+  );
+  const payload = (await resp.json())?.data?.sellingPlanGroupCreate;
+  const userErrors = payload?.userErrors || [];
+  if (userErrors.length) {
+    return { error: userErrors.map((e) => e.message).join("; ") };
+  }
+
+  const groupId = payload?.sellingPlanGroup?.id;
+  const sellingPlanId = payload?.sellingPlanGroup?.sellingPlans?.edges?.[0]?.node?.id;
+  if (!groupId || !sellingPlanId) {
+    return { error: "Shopify did not return a selling plan id for the new group." };
+  }
+
+  return { groupId, sellingPlanId };
+}
+
 export const action = async ({ request, params }) => {
   const { session, admin } = await authenticate.admin(request);
   const form = await request.formData();
@@ -43,14 +197,19 @@ export const action = async ({ request, params }) => {
       where: { id: params.id, shop: session.shop },
     });
 
-    if (plan?.shopifyPlanGroupId) {
-      await admin.graphql(`
-        mutation {
-          sellingPlanGroupDelete(id: "${plan.shopifyPlanGroupId}") {
+    // Only delete a genuine SellingPlanGroup — older records may hold a SellingPlan id by mistake.
+    if (plan?.shopifyPlanGroupId?.includes("SellingPlanGroup")) {
+      const resp = await admin.graphql(
+        `mutation deleteGroup($id: ID!) {
+          sellingPlanGroupDelete(id: $id) {
             deletedSellingPlanGroupId
+            userErrors { field message }
           }
-        }
-      `);
+        }`,
+        { variables: { id: plan.shopifyPlanGroupId } }
+      );
+      const errors = (await resp.json())?.data?.sellingPlanGroupDelete?.userErrors || [];
+      if (errors.length) console.error("sellingPlanGroupDelete errors:", errors);
     }
 
     await prisma.subscriptionPlan.delete({ where: { id: params.id } });
@@ -72,134 +231,53 @@ export const action = async ({ request, params }) => {
     return { errors: { general: "Please fill in all required fields." } };
   }
 
+  // Persist locally first so the Shopify merchantCode (record.id) is stable across edits.
+  const isNew = params.id === "new";
   let record;
 
-  if (params.id === "new") {
-    record = await prisma.subscriptionPlan.create({ data });
-  } else {
-    record = await prisma.subscriptionPlan.update({
-      where: { id: params.id },
-      data,
-    });
-  }
+  try {
+    if (isNew) {
+      record = await prisma.subscriptionPlan.create({ data });
+    } else {
+      record = await prisma.subscriptionPlan.update({
+        where: { id: params.id },
+        data,
+      });
+    }
 
-  // Build pricing policy for Shopify
-  const pricingPolicies =
-    data.discountType === "NONE"
-      ? []
-      : [
-          {
-            fixed: {
-              adjustmentType:
-                data.discountType === "PERCENTAGE"
-                  ? "PERCENTAGE"
-                  : "FIXED_AMOUNT",
-              adjustmentValue:
-                data.discountType === "PERCENTAGE"
-                  ? { percentage: data.discountValue }
-                  : { fixedValue: data.discountValue },
-            },
-          },
-        ];
+    // Sync to Shopify. If it fails, surface the error instead of silently leaving a
+    // broken plan that would be added to the cart as a one-time purchase.
+    const sync = await syncSellingPlanGroup(admin, record, data);
 
-  // Sync to Shopify SellingPlanGroup
-  const resp = await admin.graphql(
-    `mutation createPlan($input: SellingPlanGroupInput!) {
-      sellingPlanGroupCreate(input: $input) {
-        sellingPlanGroup { id }
-        userErrors { field message }
+    if (sync.error) {
+      // Roll back a freshly created record so we never persist a half-created plan.
+      if (isNew) {
+        await prisma.subscriptionPlan.delete({ where: { id: record.id } });
       }
-    }`,
-    {
-      variables: {
-        input: {
-          name: data.name,
-          merchantCode: record.id,
-          options: ["Delivery every"],
-          sellingPlansToCreate: [
-            {
-              name: data.name,
-              category: "SUBSCRIPTION",
-              options: `${data.intervalCount} ${data.intervalType}`,
-              billingPolicy: {
-                recurring: {
-                  interval: data.intervalType,
-                  intervalCount: data.intervalCount,
-                },
-              },
-              deliveryPolicy: {
-                recurring: {
-                  interval: data.intervalType,
-                  intervalCount: data.intervalCount,
-                },
-              },
-              pricingPolicies,
-            },
-          ],
-        },
+      return { errors: { general: `Could not save the plan to Shopify: ${sync.error}` } };
+    }
+
+    await prisma.subscriptionPlan.update({
+      where: { id: record.id },
+      data: {
+        shopifyPlanGroupId: sync.groupId,
+        shopifySellingPlanId: sync.sellingPlanId,
       },
-    }
-  );
-
-  const result = await resp.json();
-  console.log("GraphQL result:", JSON.stringify(result?.data?.sellingPlanGroupCreate, null, 2));
-  const groupId =
-  result?.data?.sellingPlanGroupCreate?.sellingPlanGroup?.id;
-  const sellingPlanId =
-  result?.data?.sellingPlanGroupCreate?.sellingPlanGroup?.sellingPlans?.edges?.[0]?.node?.id;
-
-  if (groupId) {
-  // Query the selling plan ID from the group
-  const planResp = await admin.graphql(
-    `query getSellingPlan($id: ID!) {
-      sellingPlanGroup(id: $id) {
-        sellingPlans(first: 1) {
-          edges {
-            node {
-              id
-            }
-          }
-        }
-      }
-    }`,
-    { variables: { id: groupId } }
-  );
-  const planResult = await planResp.json();
-  const sellingPlanId = planResult?.data?.sellingPlanGroup?.sellingPlans?.edges?.[0]?.node?.id;
-
-  console.log("Selling Plan ID:", sellingPlanId);
-
-  await prisma.subscriptionPlan.update({
-    where: { id: record.id },
-    data: { 
-      shopifyPlanGroupId: groupId,
-      shopifySellingPlanId: sellingPlanId || null,
-    },
-  });
-
-  // Assign to all products
-  const productsResp = await admin.graphql(`
-    query {
-      products(first: 250) {
-        edges { node { id } }
+    });
+  } catch (error) {
+    // Never let a thrown error reach the UI as a raw object ("[object Object]").
+    if (isNew && record) {
+      try {
+        await prisma.subscriptionPlan.delete({ where: { id: record.id } });
+      } catch {
+        // ignore cleanup failure
       }
     }
-  `);
-  const productsResult = await productsResp.json();
-  const productIds = productsResult?.data?.products?.edges?.map(e => e.node.id) || [];
-
-  if (productIds.length > 0) {
-    await admin.graphql(
-      `mutation assignPlans($id: ID!, $productIds: [ID!]!) {
-        sellingPlanGroupAddProducts(id: $id, productIds: $productIds) {
-          sellingPlanGroup { id }
-          userErrors { field message }
-        }
-      }`,
-      { variables: { id: groupId, productIds } }
-    );
+    const message = error?.message
+      ? String(error.message)
+      : "Unexpected error while saving the plan. Please try again.";
+    return { errors: { general: message } };
   }
-}
 
   return redirect("/app/subscriptions");
 };

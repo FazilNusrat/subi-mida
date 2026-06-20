@@ -52,7 +52,10 @@ export default function SubscriptionsPage() {
   const navigate = useNavigate();
 
   const toggle = (id) =>
-    submit({ intent: "toggle", id }, { method: "post" });
+    // Target the index route's action explicitly. Without `?index` a programmatic
+    // submit posts to the parent layout route (app.subscriptions.jsx), which has
+    // no action, producing a "route does not have an action" error.
+    submit({ intent: "toggle", id }, { method: "post", action: "/app/subscriptions?index" });
 
   const rows = plans.map((plan) => [
     plan.name,

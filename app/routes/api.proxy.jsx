@@ -13,7 +13,10 @@ export const loader = async ({ request }) => {
   const [rawSettings, plans] = await Promise.all([
     prisma.widgetSettings.findUnique({ where: { shop } }),
     prisma.subscriptionPlan.findMany({
-      where: { shop, isActive: true },
+      // Only serve plans that are fully synced to Shopify. A plan without a
+      // selling plan id cannot attach `selling_plan` at checkout, so showing it
+      // would silently turn a "subscribe" choice into a one-time purchase.
+      where: { shop, isActive: true, shopifySellingPlanId: { not: null } },
       orderBy: { position: "asc" },
       select: {
         id: true,
