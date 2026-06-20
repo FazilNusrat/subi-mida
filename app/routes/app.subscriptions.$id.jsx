@@ -234,34 +234,50 @@ export const action = async ({ request, params }) => {
   // Persist locally first so the Shopify merchantCode (record.id) is stable across edits.
   const isNew = params.id === "new";
   let record;
-  if (isNew) {
-    record = await prisma.subscriptionPlan.create({ data });
-  } else {
-    record = await prisma.subscriptionPlan.update({
-      where: { id: params.id },
-      data,
-    });
-  }
 
-  // Sync to Shopify. If it fails, surface the error instead of silently leaving a
-  // broken plan that would be added to the cart as a one-time purchase.
-  const sync = await syncSellingPlanGroup(admin, record, data);
-
-  if (sync.error) {
-    // Roll back a freshly created record so we never persist a half-created plan.
+  try {
     if (isNew) {
-      await prisma.subscriptionPlan.delete({ where: { id: record.id } });
+      record = await prisma.subscriptionPlan.create({ data });
+    } else {
+      record = await prisma.subscriptionPlan.update({
+        where: { id: params.id },
+        data,
+      });
     }
-    return { errors: { general: `Could not save the plan to Shopify: ${sync.error}` } };
-  }
 
-  await prisma.subscriptionPlan.update({
-    where: { id: record.id },
-    data: {
-      shopifyPlanGroupId: sync.groupId,
-      shopifySellingPlanId: sync.sellingPlanId,
-    },
-  });
+    // Sync to Shopify. If it fails, surface the error instead of silently leaving a
+    // broken plan that would be added to the cart as a one-time purchase.
+    const sync = await syncSellingPlanGroup(admin, record, data);
+
+    if (sync.error) {
+      // Roll back a freshly created record so we never persist a half-created plan.
+      if (isNew) {
+        await prisma.subscriptionPlan.delete({ where: { id: record.id } });
+      }
+      return { errors: { general: `Could not save the plan to Shopify: ${sync.error}` } };
+    }
+
+    await prisma.subscriptionPlan.update({
+      where: { id: record.id },
+      data: {
+        shopifyPlanGroupId: sync.groupId,
+        shopifySellingPlanId: sync.sellingPlanId,
+      },
+    });
+  } catch (error) {
+    // Never let a thrown error reach the UI as a raw object ("[object Object]").
+    if (isNew && record) {
+      try {
+        await prisma.subscriptionPlan.delete({ where: { id: record.id } });
+      } catch {
+        // ignore cleanup failure
+      }
+    }
+    const message = error?.message
+      ? String(error.message)
+      : "Unexpected error while saving the plan. Please try again.";
+    return { errors: { general: message } };
+  }
 
   return redirect("/app/subscriptions");
 };
